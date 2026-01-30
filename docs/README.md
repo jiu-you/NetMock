@@ -1,4 +1,4 @@
-# 接口返回值覆盖器 Chrome 插件
+# NetMock Chrome 插件
 
 一个基于 Chrome Extension Manifest V3 的插件，可以拦截和覆盖网络请求的返回值。
 

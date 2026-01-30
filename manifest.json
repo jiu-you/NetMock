@@ -30,7 +30,7 @@
     }
   ],
   "action": {
-    "default_title": "接口返回值覆盖器"
+    "default_title": "NetMock"
   },
   "declarative_net_request": {
     "rule_resources": [
