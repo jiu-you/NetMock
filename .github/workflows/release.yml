@@ -1,0 +1,38 @@
+name: Release Chrome Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Project
+        run: npm run build
+
+      - name: Zip Extension
+        run: |
+          zip -r netmock.zip . -x "*.git*" "node_modules/*" ".github/*" "ui-src/*" "vite.config.js" "package*.json" "*.md" "LICENSE"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: netmock.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,21 @@
+{
+  "name": "netmock",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "preview": "vite preview --config vite.config.js --port 4173"
+  },
+  "dependencies": {
+    "element-plus": "^2.7.6",
+    "vue": "^3.4.38"
+  },
+  "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.55.1",
+    "@vitejs/plugin-vue": "^5.1.2",
+    "rollup": "^4.57.0",
+    "vite": "^5.4.0"
+  }
+}
