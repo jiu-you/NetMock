@@ -21,17 +21,45 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Update manifest version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ -z "$VERSION" ]]; then
+            echo "Empty version extracted from tag ref: $GITHUB_REF"
+            exit 1
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid extension version: $VERSION"
+            echo "Expected format: X.Y.Z (numeric only)"
+            exit 1
+          fi
+
+          sed -i 's/"version": ".*"/"version": "'"$VERSION"'"/' manifest.json
+          echo "Updated manifest version to $VERSION"
+        shell: bash
+
       - name: Build Project
         run: npm run build
 
       - name: Zip Extension
         run: |
-          zip -r netmock.zip . -x "*.git*" "node_modules/*" ".github/*" "ui-src/*" "vite.config.js" "package*.json" "*.md" "LICENSE"
+          zip -r netmock.zip . -x "*.git*" "node_modules/*" ".github/*" "ui-src/*" "vite.config.js" "package*.json" "*.md" "LICENSE" "pem/*" "*.pem" "**/*.pem" "key.pem"
+
+      - name: Pack CRX
+        uses: cardinalby/webext-buildtools-pack-extension-dir-action@ff720c809940cd5a1cbb048e988cccc71837ade4
+        with:
+          extensionDir: '.'
+          zipFilePath: 'netmock.zip'
+          crxFilePath: 'netmock.crx'
+          privateKey: ${{ secrets.CRX_PRIVATE_KEY }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: netmock.zip
+          files: |
+            netmock.zip
+            netmock.crx
           draft: false
           prerelease: false
         env:
