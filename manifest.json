@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NetMock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NetMock - Professional API Mocking Tool. Intercept and rewrite network requests with ease.",
   "permissions": [
     "storage",
