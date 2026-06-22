@@ -43,9 +43,22 @@
         }
     }
 
+    function getOverrideMode() {
+        try { return localStorage.getItem('__overrideMode') || 'dnr'; } catch (_) { return 'dnr'; }
+    }
+
+    function shouldUsePageRule(rule) {
+        if (!rule || !rule.enabled) return false;
+        if (getOverrideMode() === 'page') return true;
+        if (rule.interceptMode === 'page') return true;
+
+        // Non-200 responses must be produced in page JS; DNR data: redirects become 200.
+        return (parseInt(rule.statusCode, 10) || 200) !== 200;
+    }
+
     function findMatchingRule(url) {
         const absolute = toAbsoluteUrl(url);
-        return activeRules.find(r => r && r.enabled && matchUrlPattern(absolute, r.urlPattern));
+        return activeRules.find(r => r && shouldUsePageRule(r) && matchUrlPattern(absolute, r.urlPattern));
     }
 
     function buildMockResponse(rule) {
@@ -69,7 +82,6 @@
         const rawUrl = typeof req === 'string' ? req : (req && (req.url || req.toString()));
         const absUrl = toAbsoluteUrl(rawUrl);
         const method = (req && req.method) || (args[1] && args[1].method) || 'GET';
-        try { if (localStorage.getItem('__useDNRRedirect') === 'true') return originalFetch.apply(this, args); } catch (_) {}
         const rule = absUrl && findMatchingRule(absUrl);
         if (rule) {
             sendLog({
@@ -96,7 +108,6 @@
     };
     XMLHttpRequest.prototype.send = function(data) {
         const url = this.__override_url;
-        try { if (localStorage.getItem('__useDNRRedirect') === 'true') return origSend.apply(this, [data]); } catch (_) {}
         const rule = url && findMatchingRule(url);
         if (rule) {
             const contentType = rule.contentType || 'application/json; charset=utf-8';

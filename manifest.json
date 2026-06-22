@@ -5,8 +5,7 @@
   "description": "NetMock - Professional API Mocking Tool. Intercept and rewrite network requests with ease.",
   "permissions": [
     "storage",
-    "declarativeNetRequest",
-    "declarativeNetRequestFeedback"
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "<all_urls>"

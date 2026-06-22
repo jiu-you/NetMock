@@ -151,6 +151,7 @@
                                         <div class="badge-group">
                                             <span class="badge method-badge">GET/POST</span>
                                             <span class="badge status-badge" :class="getStatusCodeClass(rule.statusCode)">{{ rule.statusCode }}</span>
+                                            <span class="badge mode-badge" :class="getInterceptModeClass(rule)">{{ getInterceptModeLabel(rule) }}</span>
                                             <span class="badge type-badge">{{ rule.contentType }}</span>
                                         </div>
                                         <div class="timestamp">{{ t('list.updated') }} {{ formatTime(rule.updatedAt) }}</div>
@@ -196,6 +197,7 @@
                             <div class="badge-group">
                                 <span class="badge method-badge">GET/POST</span>
                                 <span class="badge status-badge" :class="getStatusCodeClass(rule.statusCode)">{{ rule.statusCode }}</span>
+                                <span class="badge mode-badge" :class="getInterceptModeClass(rule)">{{ getInterceptModeLabel(rule) }}</span>
                                 <span class="badge type-badge">{{ rule.contentType }}</span>
                             </div>
                             <div class="timestamp">{{ t('list.updated') }} {{ formatTime(rule.updatedAt) }}</div>
@@ -238,10 +240,33 @@
                 </el-col>
                 <el-col :span="12">
                      <el-form-item :label="t('editor.label_type')">
-                        <el-input v-model="editingRule.contentType" placeholder="application/json" />
+                        <el-select
+                            v-model="editingRule.contentType"
+                            filterable
+                            allow-create
+                            default-first-option
+                            :reserve-keyword="false"
+                            placeholder="application/json; charset=utf-8"
+                            style="width: 100%"
+                        >
+                            <el-option
+                                v-for="type in CONTENT_TYPES"
+                                :key="type"
+                                :label="type"
+                                :value="type"
+                            />
+                        </el-select>
                     </el-form-item>
                 </el-col>
              </el-row>
+            <el-form-item :label="t('editor.label_intercept')">
+                <el-radio-group v-model="editingRule.interceptMode" size="small">
+                    <el-radio-button label="auto">{{ t('editor.mode_auto') }}</el-radio-button>
+                    <el-radio-button label="dnr" :disabled="editingRule.statusCode !== 200">{{ t('editor.mode_dnr') }}</el-radio-button>
+                    <el-radio-button label="page">{{ t('editor.mode_page') }}</el-radio-button>
+                </el-radio-group>
+                <div class="form-help">{{ t('editor.help_intercept') }}</div>
+            </el-form-item>
             <el-form-item :label="t('editor.label_enable')">
                 <el-switch v-model="editingRule.enabled" />
             </el-form-item>
@@ -329,6 +354,11 @@ const messages = {
       help_url: 'Supports wildcards (*)',
       label_status: 'Status Code',
       label_type: 'Content Type',
+      label_intercept: 'Intercept Mode',
+      mode_auto: 'Auto',
+      mode_dnr: 'Network (DNR)',
+      mode_page: 'Injected (JS)',
+      help_intercept: 'Auto uses DNR for 200 responses and JS injection for non-200 responses.',
       label_enable: 'Enable Rule',
       label_body: 'Response Body',
       placeholder_template: 'Load Template',
@@ -340,6 +370,7 @@ const messages = {
       error_json: 'Invalid JSON',
       error_url_req: 'URL Pattern is required',
       error_body_req: 'Response Data is required',
+      error_dnr_status: 'Network (DNR) mode only supports status 200. Use Auto or Injected (JS).',
       success_saved: 'Rule Saved'
     },
     dialog: {
@@ -407,6 +438,11 @@ const messages = {
       help_url: '支持通配符 (*)',
       label_status: '状态码',
       label_type: 'Content-Type',
+      label_intercept: '拦截方式',
+      mode_auto: '自动',
+      mode_dnr: '网络层 (DNR)',
+      mode_page: '注入层 (JS)',
+      help_intercept: '自动模式下，200 响应用 DNR，非 200 响应用 JS 注入以保留状态码。',
       label_enable: '启用规则',
       label_body: '响应内容',
       placeholder_template: '加载模板',
@@ -418,6 +454,7 @@ const messages = {
       error_json: 'JSON 格式错误',
       error_url_req: '请输入 URL 模式',
       error_body_req: '请输入响应内容',
+      error_dnr_status: '网络层 (DNR) 只能保留 200 状态码，请选择自动或注入层 (JS)。',
       success_saved: '保存成功'
     },
     dialog: {
@@ -461,6 +498,23 @@ const t = (path) => {
 };
 
 // --- Constants ---
+const CONTENT_TYPES = [
+  'application/json; charset=utf-8',
+  'application/json',
+  'text/plain; charset=utf-8',
+  'text/html; charset=utf-8',
+  'text/css; charset=utf-8',
+  'application/javascript; charset=utf-8',
+  'application/xml; charset=utf-8',
+  'text/xml; charset=utf-8',
+  'application/x-www-form-urlencoded; charset=utf-8',
+  'multipart/form-data',
+  'application/octet-stream',
+  'image/svg+xml',
+  'image/png',
+  'image/jpeg'
+];
+
 const TEMPLATES = computed(() => [
   { id: 'success', name: t('templates.success'), statusCode: 200, contentType: 'application/json; charset=utf-8', body: { status: 'success', data: {}, message: 'ok' } },
   { id: 'empty-list', name: t('templates.empty_list'), statusCode: 200, contentType: 'application/json; charset=utf-8', body: { status: 'success', data: [], total: 0 } },
@@ -501,6 +555,7 @@ const editingRule = reactive({
     urlPattern: '',
     statusCode: 200,
     contentType: 'application/json; charset=utf-8',
+    interceptMode: 'auto',
     enabled: true,
     responseData: ''
 });
@@ -623,6 +678,21 @@ const getStatusCodeClass = (code) => {
     return '';
 };
 
+const getEffectiveInterceptMode = (rule) => {
+    if (overrideMode.value === 'page') return 'page';
+    if (rule.interceptMode === 'page') return 'page';
+    if ((parseInt(rule.statusCode, 10) || 200) !== 200) return 'page';
+    return 'dnr';
+};
+
+const getInterceptModeLabel = (rule) => {
+    return getEffectiveInterceptMode(rule) === 'page' ? t('editor.mode_page') : t('editor.mode_dnr');
+};
+
+const getInterceptModeClass = (rule) => {
+    return getEffectiveInterceptMode(rule) === 'page' ? 'mode-page' : 'mode-dnr';
+};
+
 // Initialization
 const loadSettings = async () => {
     if (!chrome || !chrome.storage) return;
@@ -659,6 +729,11 @@ const checkJson = () => {
     }
 };
 watch(() => editingRule.responseData, checkJson);
+watch(() => editingRule.statusCode, (val) => {
+    if ((parseInt(val, 10) || 200) !== 200 && editingRule.interceptMode === 'dnr') {
+        editingRule.interceptMode = 'auto';
+    }
+});
 watch(groupByOrigin, (val) => {
     if (chrome && chrome.storage) {
         chrome.storage.local.set({ groupByOrigin: val });
@@ -792,6 +867,9 @@ const saveRule = () => {
     if (!editingRule.urlPattern) return ElMessage.error(t('editor.error_url_req'));
     if (!editingRule.responseData) return ElMessage.error(t('editor.error_body_req'));
     if (jsonError.value) return ElMessage.error(t('editor.error_json'));
+    if (editingRule.interceptMode === 'dnr' && (parseInt(editingRule.statusCode, 10) || 200) !== 200) {
+        return ElMessage.error(t('editor.error_dnr_status'));
+    }
 
     const now = Date.now();
     const finalRule = { ...editingRule, updatedAt: now };
@@ -819,6 +897,7 @@ const resetEditor = () => {
         urlPattern: '',
         statusCode: 200,
         contentType: 'application/json; charset=utf-8',
+        interceptMode: 'auto',
         enabled: true,
         responseData: '{\n  "status": "success",\n  "data": {}\n}'
     });
@@ -904,6 +983,7 @@ const normalizeRules = (list) => {
         responseData: typeof rule.responseData === 'string' ? rule.responseData : JSON.stringify(rule.responseData || {}),
         statusCode: parseInt(rule.statusCode, 10) || 200,
         contentType: rule.contentType || 'application/json; charset=utf-8',
+        interceptMode: ['auto', 'dnr', 'page'].includes(rule.interceptMode) ? rule.interceptMode : 'auto',
         enabled: rule.enabled !== false,
         priority: rule.priority || 1,
         createdAt: rule.createdAt || now,
@@ -1243,10 +1323,14 @@ const toggleGroup = (groupName) => {
 }
 .rule-inner {
     flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     padding: 0 20px;
     gap: 16px;
+}
+.rule-select {
+    flex: 0 0 auto;
 }
 .rule-main {
     flex: 1;
@@ -1266,33 +1350,53 @@ const toggleGroup = (groupName) => {
     text-overflow: ellipsis;
 }
 .rule-bottom {
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 12px;
 }
 .badge-group {
+    min-width: 0;
     display: flex;
     gap: 6px;
+    overflow: hidden;
 }
 .badge {
+    min-width: 0;
+    max-width: 220px;
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
     font-weight: 600;
     background: #f1f5f9;
     color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.method-badge,
+.status-badge,
+.mode-badge {
+    flex: 0 0 auto;
+}
+.type-badge {
+    flex: 1 1 auto;
 }
 .status-badge.status-2xx { background: #dcfce7; color: #15803d; }
 .status-badge.status-4xx { background: #fee2e2; color: #b91c1c; }
 .status-badge.status-5xx { background: #fef2f2; color: #991b1b; }
+.mode-badge.mode-dnr { background: #dbeafe; color: #1d4ed8; }
+.mode-badge.mode-page { background: #fef3c7; color: #92400e; }
 
 .timestamp {
+    flex: 0 0 auto;
     font-size: 11px;
     color: #94a3b8;
     margin-left: auto; /* push to right of main area */
 }
 
 .rule-actions {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 20px;
@@ -1300,6 +1404,7 @@ const toggleGroup = (groupName) => {
     border-left: 1px solid #f1f5f9;
 }
 .action-buttons {
+    flex: 0 0 auto;
     display: flex;
     gap: 6px;
 }
