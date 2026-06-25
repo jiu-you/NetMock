@@ -10,10 +10,10 @@ const outDir = path.join(rootDir, 'NetMock');
 const runtimeEntries = [
   'manifest.json',
   'src',
-  'ui',
   'assets/icons',
   'rules'
 ];
+const generatedUiEntry = 'NetMock/ui';
 
 async function exists(targetPath) {
   try {
@@ -34,19 +34,23 @@ async function ensureRuntimeEntries() {
     }
   }
 
+  if (!(await exists(path.join(rootDir, generatedUiEntry)))) {
+    missing.push(generatedUiEntry);
+  }
+
   if (missing.length > 0) {
     throw new Error(`缺少运行时文件/目录: ${missing.join(', ')}`);
   }
 }
 
 async function copyRuntimeFiles() {
-  await fs.rm(outDir, { recursive: true, force: true });
   await fs.mkdir(outDir, { recursive: true });
 
   for (const entry of runtimeEntries) {
     const srcPath = path.join(rootDir, entry);
     const destPath = path.join(outDir, entry);
 
+    await fs.rm(destPath, { recursive: true, force: true });
     await fs.mkdir(path.dirname(destPath), { recursive: true });
     await fs.cp(srcPath, destPath, { recursive: true });
   }
