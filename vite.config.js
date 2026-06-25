@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import path from 'path';
 
 export default defineConfig({
-  root: 'ui-src',
+  root: 'ui',
   base: './',
   plugins: [vue()],
   build: {
@@ -11,8 +11,8 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        tab: path.resolve(__dirname, 'ui-src/tab.html'),
-        popup: path.resolve(__dirname, 'ui-src/popup.html')
+        tab: path.resolve(__dirname, 'ui/tab.html'),
+        popup: path.resolve(__dirname, 'ui/popup.html')
       },
       output: {
         entryFileNames: 'assets/[name].js',
