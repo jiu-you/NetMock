@@ -4,6 +4,7 @@ let overrideMode = 'dnr';
 let debugMode = false;
 const logs = [];
 const LOG_LIMIT = 200;
+const SUPPORTED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
 chrome.runtime.onInstalled.addListener((details) => {
     loadState();
@@ -162,6 +163,26 @@ function buildDataUrlForRule(rule) {
     return `data:${contentType};base64,${base64}`;
 }
 
+function getRuleMethods(rule) {
+    if (!Array.isArray(rule.methods)) return SUPPORTED_METHODS.slice();
+    const methods = Array.from(new Set(rule.methods
+        .map(method => String(method || '').toUpperCase())
+        .filter(method => SUPPORTED_METHODS.includes(method))));
+    return methods.length > 0 ? methods : SUPPORTED_METHODS.slice();
+}
+
+function buildDnrCondition(rule) {
+    const condition = {
+        urlFilter: rule.urlPattern,
+        resourceTypes: ['xmlhttprequest']
+    };
+    const methods = getRuleMethods(rule);
+    if (methods.length !== SUPPORTED_METHODS.length) {
+        condition.requestMethods = methods.map(method => method.toLowerCase());
+    }
+    return condition;
+}
+
 function shouldUseDnrRule(rule) {
     if (!rule || !rule.enabled || !rule.urlPattern) return false;
     if (overrideMode !== 'dnr') return false;
@@ -188,10 +209,7 @@ function updateDeclarativeNetRequestRules() {
                         type: 'redirect',
                         redirect: { url: buildDataUrlForRule(rule) }
                     },
-                    condition: {
-                        urlFilter: rule.urlPattern,
-                        resourceTypes: ['xmlhttprequest']
-                    }
+                    condition: buildDnrCondition(rule)
                 }));
 
             chrome.declarativeNetRequest.updateDynamicRules({

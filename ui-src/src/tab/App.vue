@@ -149,7 +149,7 @@
                                     </div>
                                     <div class="rule-bottom">
                                         <div class="badge-group">
-                                            <span class="badge method-badge">GET/POST</span>
+                                            <span class="badge method-badge" :title="getMethodsLabel(rule)">{{ getMethodsLabel(rule) }}</span>
                                             <span class="badge status-badge" :class="getStatusCodeClass(rule.statusCode)">{{ rule.statusCode }}</span>
                                             <span class="badge mode-badge" :class="getInterceptModeClass(rule)">{{ getInterceptModeLabel(rule) }}</span>
                                             <span class="badge type-badge">{{ rule.contentType }}</span>
@@ -195,7 +195,7 @@
                         </div>
                         <div class="rule-bottom">
                             <div class="badge-group">
-                                <span class="badge method-badge">GET/POST</span>
+                                <span class="badge method-badge" :title="getMethodsLabel(rule)">{{ getMethodsLabel(rule) }}</span>
                                 <span class="badge status-badge" :class="getStatusCodeClass(rule.statusCode)">{{ rule.statusCode }}</span>
                                 <span class="badge mode-badge" :class="getInterceptModeClass(rule)">{{ getInterceptModeLabel(rule) }}</span>
                                 <span class="badge type-badge">{{ rule.contentType }}</span>
@@ -259,6 +259,24 @@
                     </el-form-item>
                 </el-col>
              </el-row>
+            <el-form-item :label="t('editor.label_methods')">
+                <el-select
+                    v-model="editingRule.methods"
+                    multiple
+                    collapse-tags
+                    collapse-tags-tooltip
+                    :placeholder="t('editor.placeholder_methods')"
+                    style="width: 100%"
+                >
+                    <el-option
+                        v-for="method in HTTP_METHODS"
+                        :key="method"
+                        :label="method"
+                        :value="method"
+                    />
+                </el-select>
+                <div class="form-help">{{ t('editor.help_methods') }}</div>
+            </el-form-item>
             <el-form-item :label="t('editor.label_intercept')">
                 <el-radio-group v-model="editingRule.interceptMode" size="small">
                     <el-radio-button label="auto">{{ t('editor.mode_auto') }}</el-radio-button>
@@ -354,6 +372,9 @@ const messages = {
       help_url: 'Supports wildcards (*)',
       label_status: 'Status Code',
       label_type: 'Content Type',
+      label_methods: 'Methods',
+      placeholder_methods: 'Select request methods',
+      help_methods: 'Only requests with selected methods will be mocked. Select multiple methods as needed.',
       label_intercept: 'Intercept Mode',
       mode_auto: 'Auto',
       mode_dnr: 'Network (DNR)',
@@ -370,6 +391,7 @@ const messages = {
       error_json: 'Invalid JSON',
       error_url_req: 'URL Pattern is required',
       error_body_req: 'Response Data is required',
+      error_methods_req: 'Select at least one request method',
       error_dnr_status: 'Network (DNR) mode only supports status 200. Use Auto or Injected (JS).',
       success_saved: 'Rule Saved'
     },
@@ -438,6 +460,9 @@ const messages = {
       help_url: '支持通配符 (*)',
       label_status: '状态码',
       label_type: 'Content-Type',
+      label_methods: '请求方法',
+      placeholder_methods: '选择请求方法',
+      help_methods: '只有选中的请求方法会被 Mock，可多选。',
       label_intercept: '拦截方式',
       mode_auto: '自动',
       mode_dnr: '网络层 (DNR)',
@@ -454,6 +479,7 @@ const messages = {
       error_json: 'JSON 格式错误',
       error_url_req: '请输入 URL 模式',
       error_body_req: '请输入响应内容',
+      error_methods_req: '请至少选择一个请求方法',
       error_dnr_status: '网络层 (DNR) 只能保留 200 状态码，请选择自动或注入层 (JS)。',
       success_saved: '保存成功'
     },
@@ -498,6 +524,9 @@ const t = (path) => {
 };
 
 // --- Constants ---
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
+const DEFAULT_METHODS = HTTP_METHODS.slice();
+
 const CONTENT_TYPES = [
   'application/json; charset=utf-8',
   'application/json',
@@ -555,6 +584,7 @@ const editingRule = reactive({
     urlPattern: '',
     statusCode: 200,
     contentType: 'application/json; charset=utf-8',
+    methods: DEFAULT_METHODS.slice(),
     interceptMode: 'auto',
     enabled: true,
     responseData: ''
@@ -691,6 +721,19 @@ const getInterceptModeLabel = (rule) => {
 
 const getInterceptModeClass = (rule) => {
     return getEffectiveInterceptMode(rule) === 'page' ? 'mode-page' : 'mode-dnr';
+};
+
+const getRuleMethods = (rule) => {
+    const methods = Array.isArray(rule.methods) ? rule.methods : DEFAULT_METHODS;
+    const normalized = methods
+        .map(method => String(method || '').toUpperCase())
+        .filter(method => HTTP_METHODS.includes(method));
+    return normalized.length > 0 ? normalized : DEFAULT_METHODS;
+};
+
+const getMethodsLabel = (rule) => {
+    const methods = getRuleMethods(rule);
+    return methods.length === HTTP_METHODS.length ? 'ALL' : methods.join('/');
 };
 
 // Initialization
@@ -866,6 +909,7 @@ const deleteRule = async (rule) => {
 const saveRule = () => {
     if (!editingRule.urlPattern) return ElMessage.error(t('editor.error_url_req'));
     if (!editingRule.responseData) return ElMessage.error(t('editor.error_body_req'));
+    if (!Array.isArray(editingRule.methods) || editingRule.methods.length === 0) return ElMessage.error(t('editor.error_methods_req'));
     if (jsonError.value) return ElMessage.error(t('editor.error_json'));
     if (editingRule.interceptMode === 'dnr' && (parseInt(editingRule.statusCode, 10) || 200) !== 200) {
         return ElMessage.error(t('editor.error_dnr_status'));
@@ -897,6 +941,7 @@ const resetEditor = () => {
         urlPattern: '',
         statusCode: 200,
         contentType: 'application/json; charset=utf-8',
+        methods: DEFAULT_METHODS.slice(),
         interceptMode: 'auto',
         enabled: true,
         responseData: '{\n  "status": "success",\n  "data": {}\n}'
@@ -983,12 +1028,21 @@ const normalizeRules = (list) => {
         responseData: typeof rule.responseData === 'string' ? rule.responseData : JSON.stringify(rule.responseData || {}),
         statusCode: parseInt(rule.statusCode, 10) || 200,
         contentType: rule.contentType || 'application/json; charset=utf-8',
+        methods: normalizeMethods(rule.methods),
         interceptMode: ['auto', 'dnr', 'page'].includes(rule.interceptMode) ? rule.interceptMode : 'auto',
         enabled: rule.enabled !== false,
         priority: rule.priority || 1,
         createdAt: rule.createdAt || now,
         updatedAt: rule.updatedAt || now
     }));
+};
+
+const normalizeMethods = (methods) => {
+    if (!Array.isArray(methods)) return DEFAULT_METHODS.slice();
+    const normalized = Array.from(new Set(methods
+        .map(method => String(method || '').toUpperCase())
+        .filter(method => HTTP_METHODS.includes(method))));
+    return normalized.length > 0 ? normalized : DEFAULT_METHODS.slice();
 };
 
 const generateId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
@@ -1378,6 +1432,9 @@ const toggleGroup = (groupName) => {
 .status-badge,
 .mode-badge {
     flex: 0 0 auto;
+}
+.method-badge {
+    max-width: 140px;
 }
 .type-badge {
     flex: 1 1 auto;

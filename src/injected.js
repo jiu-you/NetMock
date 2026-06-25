@@ -1,5 +1,6 @@
 (function() {
     let activeRules = [];
+    const SUPPORTED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
     function isDebugEnabled() {
         try { return localStorage.getItem('__debugMode') === 'true'; } catch (_) { return false; }
@@ -56,9 +57,21 @@
         return (parseInt(rule.statusCode, 10) || 200) !== 200;
     }
 
-    function findMatchingRule(url) {
+    function getRuleMethods(rule) {
+        if (!Array.isArray(rule.methods)) return SUPPORTED_METHODS.slice();
+        const methods = rule.methods
+            .map(method => String(method || '').toUpperCase())
+            .filter(method => SUPPORTED_METHODS.includes(method));
+        return methods.length > 0 ? methods : SUPPORTED_METHODS.slice();
+    }
+
+    function matchMethod(rule, method) {
+        return getRuleMethods(rule).includes(String(method || 'GET').toUpperCase());
+    }
+
+    function findMatchingRule(url, method) {
         const absolute = toAbsoluteUrl(url);
-        return activeRules.find(r => r && shouldUsePageRule(r) && matchUrlPattern(absolute, r.urlPattern));
+        return activeRules.find(r => r && shouldUsePageRule(r) && matchMethod(r, method) && matchUrlPattern(absolute, r.urlPattern));
     }
 
     function buildMockResponse(rule) {
@@ -82,7 +95,7 @@
         const rawUrl = typeof req === 'string' ? req : (req && (req.url || req.toString()));
         const absUrl = toAbsoluteUrl(rawUrl);
         const method = (req && req.method) || (args[1] && args[1].method) || 'GET';
-        const rule = absUrl && findMatchingRule(absUrl);
+        const rule = absUrl && findMatchingRule(absUrl, method);
         if (rule) {
             sendLog({
                 ts: Date.now(),
@@ -108,7 +121,7 @@
     };
     XMLHttpRequest.prototype.send = function(data) {
         const url = this.__override_url;
-        const rule = url && findMatchingRule(url);
+        const rule = url && findMatchingRule(url, this.__override_method);
         if (rule) {
             const contentType = rule.contentType || 'application/json; charset=utf-8';
             const raw = typeof rule.responseData === 'string' ? rule.responseData : JSON.stringify(rule.responseData ?? {});
@@ -158,7 +171,7 @@
         window.axios.request = function(config) {
             const raw = (config && config.url) || config;
             const absUrl = toAbsoluteUrl(raw);
-            const rule = absUrl && findMatchingRule(absUrl);
+            const rule = absUrl && findMatchingRule(absUrl, config && config.method);
             if (rule) {
                 const dataStr = typeof rule.responseData === 'string' ? rule.responseData : JSON.stringify(rule.responseData ?? {});
                 sendLog({

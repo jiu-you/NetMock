@@ -1,5 +1,6 @@
 // 存储规则
 let responseOverrideRules = [];
+const SUPPORTED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
 // 调试模式日志输出
 function isDebugEnabled() {
@@ -137,10 +138,22 @@ function shouldUsePageRule(rule) {
     return (parseInt(rule.statusCode, 10) || 200) !== 200;
 }
 
+function getRuleMethods(rule) {
+    if (!Array.isArray(rule.methods)) return SUPPORTED_METHODS.slice();
+    const methods = rule.methods
+        .map(method => String(method || '').toUpperCase())
+        .filter(method => SUPPORTED_METHODS.includes(method));
+    return methods.length > 0 ? methods : SUPPORTED_METHODS.slice();
+}
+
+function matchMethod(rule, method) {
+    return getRuleMethods(rule).includes(String(method || 'GET').toUpperCase());
+}
+
 // 查找匹配的规则
-function findMatchingRule(url) {
+function findMatchingRule(url, method) {
     const matchingRule = responseOverrideRules.find(rule =>
-        shouldUsePageRule(rule) && matchUrlPattern(url, rule.urlPattern)
+        shouldUsePageRule(rule) && matchMethod(rule, method) && matchUrlPattern(url, rule.urlPattern)
     );
     if (matchingRule) {
         debugLog('找到匹配规则:', url, matchingRule);
@@ -202,7 +215,8 @@ function setupInterceptors() {
     const originalFetch = window.fetch;
     window.fetch = async function(...args) {
         const url = typeof args[0] === 'string' ? args[0] : (args[0] && (args[0].url || args[0].toString()));
-        const matchingRule = url && findMatchingRule(url);
+        const method = (args[0] && args[0].method) || (args[1] && args[1].method) || 'GET';
+        const matchingRule = url && findMatchingRule(url, method);
         if (matchingRule) {
             debugLog('拦截fetch请求(内容脚本兜底):', url, '匹配规则:', matchingRule);
             const mockResponse = createMockResponse(matchingRule);
@@ -219,7 +233,7 @@ function setupInterceptors() {
         return originalXHROpen.apply(this, [method, url, ...args]);
     };
     XMLHttpRequest.prototype.send = function(data) {
-        const matchingRule = this._url && findMatchingRule(this._url);
+        const matchingRule = this._url && findMatchingRule(this._url, this._method);
         if (matchingRule) {
             debugLog('拦截XMLHttpRequest请求(内容脚本兜底):', this._url, '匹配规则:', matchingRule);
             setTimeout(() => {
@@ -259,7 +273,7 @@ function setupInterceptors() {
         const originalAxiosRequest = window.axios.request;
         window.axios.request = function(config) {
             const url = config.url || config;
-            const matchingRule = url && findMatchingRule(url);
+            const matchingRule = url && findMatchingRule(url, config && config.method);
             if (matchingRule) {
                 debugLog('拦截axios请求(内容脚本兜底):', url, '匹配规则:', matchingRule);
                 try {
