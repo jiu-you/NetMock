@@ -44,13 +44,8 @@
         }
     }
 
-    function getOverrideMode() {
-        try { return localStorage.getItem('__overrideMode') || 'dnr'; } catch (_) { return 'dnr'; }
-    }
-
     function shouldUsePageRule(rule) {
         if (!rule || !rule.enabled) return false;
-        if (getOverrideMode() === 'page') return true;
         if (rule.interceptMode === 'page') return true;
 
         // Non-200 responses must be produced in page JS; DNR data: redirects become 200.

@@ -1,6 +1,5 @@
 // 存储规则与设置
 let responseOverrideRules = [];
-let overrideMode = 'dnr';
 let debugMode = false;
 const logs = [];
 const LOG_LIMIT = 200;
@@ -19,7 +18,7 @@ chrome.runtime.onStartup.addListener(loadState);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'UPDATE_RULES') {
         responseOverrideRules = message.rules || [];
-        applyOverrideMode();
+        updateDeclarativeNetRequestRules();
         sendResponse({ success: true });
     } else if (message.type === 'PING') {
         sendResponse({ success: true, message: 'pong' });
@@ -36,14 +35,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.type === 'LOG_EVENT') {
         addLog({
             ...message.payload,
-            ts: (message.payload && message.payload.ts) || Date.now(),
-            mode: overrideMode
+            ts: (message.payload && message.payload.ts) || Date.now()
         });
         sendResponse({ success: true });
-    } else if (message.type === 'SET_OVERRIDE_MODE') {
-        overrideMode = message.mode === 'page' ? 'page' : 'dnr';
-        applyOverrideMode();
-        sendResponse({ success: true, mode: overrideMode });
     }
 });
 
@@ -61,13 +55,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
     if (changes.responseOverrideRules) {
         responseOverrideRules = changes.responseOverrideRules.newValue || [];
-        if (overrideMode === 'dnr') {
-            updateDeclarativeNetRequestRules();
-        }
-    }
-    if (changes.overrideMode) {
-        overrideMode = changes.overrideMode.newValue || 'dnr';
-        applyOverrideMode();
+        updateDeclarativeNetRequestRules();
     }
     if (changes.debugMode) {
         debugMode = !!changes.debugMode.newValue;
@@ -85,28 +73,17 @@ if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.onRuleMatchedDe
             method: request.method || '',
             source: 'dnr',
             ruleId,
-            mode: overrideMode
+            mode: 'dnr'
         });
     });
 }
 
 function loadState() {
-    chrome.storage.local.get(['responseOverrideRules', 'overrideMode', 'debugMode'], (result) => {
+    chrome.storage.local.get(['responseOverrideRules', 'debugMode'], (result) => {
         responseOverrideRules = result.responseOverrideRules || [];
-        overrideMode = result.overrideMode || 'dnr';
         debugMode = !!result.debugMode;
-        applyOverrideMode();
-    });
-}
-
-function applyOverrideMode() {
-    const useDnr = overrideMode === 'dnr';
-    chrome.storage.local.set({ useDNRRedirect: useDnr, overrideMode });
-    if (useDnr) {
         updateDeclarativeNetRequestRules();
-    } else {
-        clearDynamicRules();
-    }
+    });
 }
 
 function addLog(entry) {
@@ -130,7 +107,6 @@ function clearDynamicRules() {
     chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
         const existingRuleIds = existingRules.map(rule => rule.id);
         if (existingRuleIds.length === 0) {
-            chrome.storage.local.set({ useDNRRedirect: false });
             return;
         }
         chrome.declarativeNetRequest.updateDynamicRules({
@@ -140,7 +116,6 @@ function clearDynamicRules() {
             if (chrome.runtime.lastError) {
                 console.error('清理动态规则失败:', chrome.runtime.lastError);
             }
-            chrome.storage.local.set({ useDNRRedirect: false });
         });
     });
 }
@@ -185,7 +160,6 @@ function buildDnrCondition(rule) {
 
 function shouldUseDnrRule(rule) {
     if (!rule || !rule.enabled || !rule.urlPattern) return false;
-    if (overrideMode !== 'dnr') return false;
     if (rule.interceptMode === 'page') return false;
 
     // DNR redirects to data: URLs cannot carry a non-200 HTTP status.
@@ -193,10 +167,6 @@ function shouldUseDnrRule(rule) {
 }
 
 function updateDeclarativeNetRequestRules() {
-    if (overrideMode !== 'dnr') {
-        clearDynamicRules();
-        return;
-    }
     try {
         chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
             const existingRuleIds = existingRules.map(rule => rule.id);
@@ -218,8 +188,6 @@ function updateDeclarativeNetRequestRules() {
             }, () => {
                 if (chrome.runtime.lastError) {
                     console.error('更新动态规则失败:', chrome.runtime.lastError);
-                } else {
-                    chrome.storage.local.set({ useDNRRedirect: true });
                 }
             });
         });

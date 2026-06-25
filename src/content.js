@@ -57,17 +57,11 @@ function setLocalFlag(key, value) {
     try { window.localStorage.setItem(key, value ? 'true' : 'false'); } catch (_) {}
 }
 
-function setLocalValue(key, value) {
-    try { window.localStorage.setItem(key, String(value || '')); } catch (_) {}
-}
-
 // 读取设置到页面上下文
 function loadSettings() {
     return new Promise((resolve) => {
-        chrome.storage.local.get(['useDNRRedirect', 'debugMode', 'overrideMode'], ({ useDNRRedirect, debugMode, overrideMode }) => {
-            setLocalFlag('__useDNRRedirect', !!useDNRRedirect);
+        chrome.storage.local.get(['debugMode'], ({ debugMode }) => {
             setLocalFlag('__debugMode', !!debugMode);
-            setLocalValue('__overrideMode', overrideMode || 'dnr');
             resolve();
         });
     });
@@ -90,14 +84,8 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         responseOverrideRules = changes.responseOverrideRules.newValue || [];
         syncRulesToPage();
     }
-    if (namespace === 'local' && changes.useDNRRedirect) {
-        setLocalFlag('__useDNRRedirect', !!changes.useDNRRedirect.newValue);
-    }
     if (namespace === 'local' && changes.debugMode) {
         setLocalFlag('__debugMode', !!changes.debugMode.newValue);
-    }
-    if (namespace === 'local' && changes.overrideMode) {
-        setLocalValue('__overrideMode', changes.overrideMode.newValue || 'dnr');
     }
 });
 
@@ -127,13 +115,8 @@ function matchUrlPattern(url, pattern) {
     }
 }
 
-function getOverrideMode() {
-    try { return window.localStorage.getItem('__overrideMode') || 'dnr'; } catch (_) { return 'dnr'; }
-}
-
 function shouldUsePageRule(rule) {
     if (!rule || !rule.enabled) return false;
-    if (getOverrideMode() === 'page') return true;
     if (rule.interceptMode === 'page') return true;
     return (parseInt(rule.statusCode, 10) || 200) !== 200;
 }

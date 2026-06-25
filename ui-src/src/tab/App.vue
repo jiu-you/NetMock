@@ -11,15 +11,6 @@
       </div>
 
       <div class="panel">
-        <div class="panel-title">{{ t('sidebar.mode') }}</div>
-        <el-radio-group v-model="overrideMode" size="small" fill="#3b82f6" @change="handleModeChange">
-          <el-radio-button label="dnr">{{ t('sidebar.mode_dnr') }}</el-radio-button>
-          <el-radio-button label="page">{{ t('sidebar.mode_page') }}</el-radio-button>
-        </el-radio-group>
-        <p class="mode-hint">{{ modeHint }}</p>
-      </div>
-
-      <div class="panel">
         <div class="panel-title">{{ t('sidebar.actions') }}</div>
         <div class="action-row">
            <el-checkbox v-model="selectAll" @change="handleSelectAll" :label="t('sidebar.select_all')" />
@@ -553,7 +544,6 @@ const TEMPLATES = computed(() => [
 ]);
 
 // --- State ---
-const overrideMode = ref('dnr');
 const debugMode = ref(false);
 const importStrategy = ref('append');
 const rules = ref([]);
@@ -592,12 +582,6 @@ const editingRule = reactive({
 const jsonError = ref('');
 
 // --- Computed ---
-const modeHint = computed(() => {
-    return overrideMode.value === 'dnr' 
-        ? t('sidebar.mode_hint_dnr')
-        : t('sidebar.mode_hint_page');
-});
-
 const filteredRules = computed(() => {
     let list = rules.value.filter(rule => {
         if (filters.url && !rule.urlPattern.toLowerCase().includes(filters.url.toLowerCase())) return false;
@@ -677,9 +661,6 @@ onMounted(async () => {
             if (changes.responseOverrideRules) {
                 rules.value = normalizeRules(changes.responseOverrideRules.newValue || []);
             }
-            if (changes.overrideMode) {
-                overrideMode.value = changes.overrideMode.newValue || 'dnr';
-            }
             if (changes.debugMode) {
                 debugMode.value = !!changes.debugMode.newValue;
             }
@@ -709,7 +690,6 @@ const getStatusCodeClass = (code) => {
 };
 
 const getEffectiveInterceptMode = (rule) => {
-    if (overrideMode.value === 'page') return 'page';
     if (rule.interceptMode === 'page') return 'page';
     if ((parseInt(rule.statusCode, 10) || 200) !== 200) return 'page';
     return 'dnr';
@@ -739,8 +719,7 @@ const getMethodsLabel = (rule) => {
 // Initialization
 const loadSettings = async () => {
     if (!chrome || !chrome.storage) return;
-    const result = await chrome.storage.local.get(['overrideMode', 'debugMode', 'importStrategy', 'groupByOrigin']);
-    overrideMode.value = result.overrideMode || 'dnr';
+    const result = await chrome.storage.local.get(['debugMode', 'importStrategy', 'groupByOrigin']);
     debugMode.value = !!result.debugMode;
     importStrategy.value = result.importStrategy || 'append';
     // Default groupByOrigin to true if undefined
@@ -785,13 +764,6 @@ watch(groupByOrigin, (val) => {
 
 
 // Actions
-const handleModeChange = (val) => {
-    if (chrome && chrome.storage) {
-        chrome.storage.local.set({ overrideMode: val });
-        chrome.runtime.sendMessage({ type: 'SET_OVERRIDE_MODE', mode: val }, () => {});
-    }
-};
-
 const handleDebugChange = (val) => {
     if (chrome && chrome.storage) {
         chrome.storage.local.set({ debugMode: val });
