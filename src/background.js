@@ -4,6 +4,7 @@ let overrideMode = 'dnr';
 let debugMode = false;
 const logs = [];
 const LOG_LIMIT = 200;
+const SUPPORTED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
 chrome.runtime.onInstalled.addListener((details) => {
     loadState();
@@ -49,8 +50,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({
         url: chrome.runtime.getURL('ui/tab.html')
-    }).catch((error) => {
-        console.error('创建标签页失败:', error);
+    }, () => {
+        if (chrome.runtime.lastError) {
+            console.error('创建标签页失败:', chrome.runtime.lastError);
+        }
     });
 });
 
@@ -71,19 +74,21 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     }
 });
 
-chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
-    if (!debugMode) return;
-    const request = info && info.request ? info.request : {};
-    const ruleId = info && info.rule ? info.rule.ruleId : undefined;
-    addLog({
-        ts: Date.now(),
-        url: request.url || '',
-        method: request.method || '',
-        source: 'dnr',
-        ruleId,
-        mode: overrideMode
+if (chrome.declarativeNetRequest && chrome.declarativeNetRequest.onRuleMatchedDebug) {
+    chrome.declarativeNetRequest.onRuleMatchedDebug.addListener((info) => {
+        if (!debugMode) return;
+        const request = info && info.request ? info.request : {};
+        const ruleId = info && info.rule ? info.rule.ruleId : undefined;
+        addLog({
+            ts: Date.now(),
+            url: request.url || '',
+            method: request.method || '',
+            source: 'dnr',
+            ruleId,
+            mode: overrideMode
+        });
     });
-});
+}
 
 function loadState() {
     chrome.storage.local.get(['responseOverrideRules', 'overrideMode', 'debugMode'], (result) => {
@@ -158,6 +163,35 @@ function buildDataUrlForRule(rule) {
     return `data:${contentType};base64,${base64}`;
 }
 
+function getRuleMethods(rule) {
+    if (!Array.isArray(rule.methods)) return SUPPORTED_METHODS.slice();
+    const methods = Array.from(new Set(rule.methods
+        .map(method => String(method || '').toUpperCase())
+        .filter(method => SUPPORTED_METHODS.includes(method))));
+    return methods.length > 0 ? methods : SUPPORTED_METHODS.slice();
+}
+
+function buildDnrCondition(rule) {
+    const condition = {
+        urlFilter: rule.urlPattern,
+        resourceTypes: ['xmlhttprequest']
+    };
+    const methods = getRuleMethods(rule);
+    if (methods.length !== SUPPORTED_METHODS.length) {
+        condition.requestMethods = methods.map(method => method.toLowerCase());
+    }
+    return condition;
+}
+
+function shouldUseDnrRule(rule) {
+    if (!rule || !rule.enabled || !rule.urlPattern) return false;
+    if (overrideMode !== 'dnr') return false;
+    if (rule.interceptMode === 'page') return false;
+
+    // DNR redirects to data: URLs cannot carry a non-200 HTTP status.
+    return (parseInt(rule.statusCode, 10) || 200) === 200;
+}
+
 function updateDeclarativeNetRequestRules() {
     if (overrideMode !== 'dnr') {
         clearDynamicRules();
@@ -167,7 +201,7 @@ function updateDeclarativeNetRequestRules() {
         chrome.declarativeNetRequest.getDynamicRules((existingRules) => {
             const existingRuleIds = existingRules.map(rule => rule.id);
             const rules = responseOverrideRules
-                .filter(rule => rule.enabled && rule.urlPattern)
+                .filter(shouldUseDnrRule)
                 .map((rule, index) => ({
                     id: index + 1,
                     priority: parseInt(rule.priority, 10) || 1,
@@ -175,10 +209,7 @@ function updateDeclarativeNetRequestRules() {
                         type: 'redirect',
                         redirect: { url: buildDataUrlForRule(rule) }
                     },
-                    condition: {
-                        urlFilter: rule.urlPattern,
-                        resourceTypes: ['xmlhttprequest']
-                    }
+                    condition: buildDnrCondition(rule)
                 }));
 
             chrome.declarativeNetRequest.updateDynamicRules({
