@@ -117,8 +117,10 @@ function matchUrlPattern(url, pattern) {
 
 function shouldUsePageRule(rule) {
     if (!rule || !rule.enabled) return false;
-    if (rule.interceptMode === 'page') return true;
-    return (parseInt(rule.statusCode, 10) || 200) !== 200;
+    if (rule.interceptMode === 'dnr' && (parseInt(rule.statusCode, 10) || 200) === 200) {
+        return false;
+    }
+    return true;
 }
 
 function getRuleMethods(rule) {

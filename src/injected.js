@@ -46,10 +46,13 @@
 
     function shouldUsePageRule(rule) {
         if (!rule || !rule.enabled) return false;
-        if (rule.interceptMode === 'page') return true;
 
-        // Non-200 responses must be produced in page JS; DNR data: redirects become 200.
-        return (parseInt(rule.statusCode, 10) || 200) !== 200;
+        // Explicit DNR keeps 200 responses at the network layer. Auto uses page JS as a
+        // reliable fallback for fetch/XHR/axios after the global mode switch was removed.
+        if (rule.interceptMode === 'dnr' && (parseInt(rule.statusCode, 10) || 200) === 200) {
+            return false;
+        }
+        return true;
     }
 
     function getRuleMethods(rule) {

@@ -370,7 +370,7 @@ const messages = {
       mode_auto: 'Auto',
       mode_dnr: 'Network (DNR)',
       mode_page: 'Injected (JS)',
-      help_intercept: 'Auto uses DNR for 200 responses and JS injection for non-200 responses.',
+      help_intercept: 'Auto uses injected JS for reliable page requests. Choose Network (DNR) only when you specifically need network-layer handling.',
       label_enable: 'Enable Rule',
       label_body: 'Response Body',
       placeholder_template: 'Load Template',
@@ -458,7 +458,7 @@ const messages = {
       mode_auto: '自动',
       mode_dnr: '网络层 (DNR)',
       mode_page: '注入层 (JS)',
-      help_intercept: '自动模式下，200 响应用 DNR，非 200 响应用 JS 注入以保留状态码。',
+      help_intercept: '自动模式使用 JS 注入以稳定拦截页面请求；只有明确需要网络层处理时才选择 DNR。',
       label_enable: '启用规则',
       label_body: '响应内容',
       placeholder_template: '加载模板',
@@ -690,9 +690,8 @@ const getStatusCodeClass = (code) => {
 };
 
 const getEffectiveInterceptMode = (rule) => {
-    if (rule.interceptMode === 'page') return 'page';
-    if ((parseInt(rule.statusCode, 10) || 200) !== 200) return 'page';
-    return 'dnr';
+    if (rule.interceptMode === 'dnr' && (parseInt(rule.statusCode, 10) || 200) === 200) return 'dnr';
+    return 'page';
 };
 
 const getInterceptModeLabel = (rule) => {

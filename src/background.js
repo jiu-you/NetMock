@@ -149,7 +149,7 @@ function getRuleMethods(rule) {
 function buildDnrCondition(rule) {
     const condition = {
         urlFilter: rule.urlPattern,
-        resourceTypes: ['xmlhttprequest']
+        resourceTypes: ['xmlhttprequest', 'other']
     };
     const methods = getRuleMethods(rule);
     if (methods.length !== SUPPORTED_METHODS.length) {
